@@ -1,4 +1,4 @@
-import Decode6502.OPCodes;
+import haxe.io.Bytes;
 import haxe.io.Input;
 
 enum OPCode //http://www.obelisk.demon.co.uk/6502/reference.html
@@ -66,7 +66,7 @@ enum OPCode //http://www.obelisk.demon.co.uk/6502/reference.html
     TXS; //Transfer X to Stack Pointer
 }
 
-enum AdressingMode //http://www.obelisk.demon.co.uk/6502/addressing.html
+enum AddressingMode //http://www.obelisk.demon.co.uk/6502/addressing.html
 {
     IMMEDIATE; //Direct value (constant)
     ZERO_PAGE; //From 0 to FF addresses (8b)
@@ -86,40 +86,43 @@ enum AdressingMode //http://www.obelisk.demon.co.uk/6502/addressing.html
     INDEXED_INDIRECT; //Wat
 }
 
+typedef Command =
+{
+    var code:OPCode;
+    var addressing:AddressingMode;
+}
+
 class Decode6502
 {
-    var s:Input;
+    var s:Bytes;
 
     static public function main()
     {
 
     }
 
-    public function new(file:Input)
+    public function new(file:Bytes)
     {
         this.s = file;
-
-        var data_available = true;
-        while (data_available)
-        {
-            try
-            {
-                var b = s.readByte();
-                decodeByte(b);
-            }
-            catch (e:haxe.io.Eof)
-            {
-                data_available = false;
-            }
-        }
-
-        trace("File finished");
     }
 
-    private function decodeByte(byte:Int)
+    public function getByte(address:Int):Int
     {
-        var opCode:OPCode;
-        var adressing:AdressingMode;
+        return s.get(address);
+    }
+
+    public function getOP(address:Int):Command
+    {
+        return decodeByte(s.get(address));
+    }
+
+    private function decodeByte(byte:Int):Command
+    {
+        if (byte == 0)
+            return null;
+
+        var opCode:OPCode = null;
+        var addressing:AddressingMode = null;
 
         var aaa = (byte & 0xE0) >> 5; //First 3 bytes
         var bbb = (byte & 0x1C) >> 2; //Middle 3 bits
@@ -136,7 +139,7 @@ class Decode6502
             opCode = opcodeTable[aaa];
 
             var adressingTable = [IMMEDIATE, ZERO_PAGE, null, ABSOLUTE, null, ZERO_PAGE_X, null, ABSOLUTE_X];
-            adressing = adressingTable[bbb];
+            addressing = adressingTable[bbb];
         }
         else if (cc == 1)
         {
@@ -144,7 +147,7 @@ class Decode6502
             opCode = opcodeTable[aaa];
 
             var adressingTable = [ZERO_PAGE_X_2, ZERO_PAGE, IMMEDIATE, ABSOLUTE, ZERO_PAGE_Y_2, ZERO_PAGE, ABSOLUTE_Y, ABSOLUTE_X];
-            adressing = adressingTable[bbb];
+            addressing = adressingTable[bbb];
         }
         else if (cc == 2)
         {
@@ -152,6 +155,9 @@ class Decode6502
             opCode = opcodeTable[aaa];
 
             //TODO : Decode BBB
+            addressing = ZERO_PAGE;
         }
+
+        return {code:opCode, addressing:addressing};
     }
 }

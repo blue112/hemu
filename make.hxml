@@ -1,0 +1,2 @@
+-neko bin/out.n
+-main VirtualMachine
