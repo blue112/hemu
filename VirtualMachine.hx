@@ -69,6 +69,34 @@ class VirtualMachine
 					var ad = getAddress(op.addressing);
 					memory.set(ad, accumulator);
 
+				case STX:
+					var ad = getAddress(op.addressing);
+					memory.set(ad, x);
+
+				case STY:
+					var ad = getAddress(op.addressing);
+					memory.set(ad, y);
+
+				case SEI, CLI:
+					id = op.code == SEI;
+
+				case SED, CLD:
+					dm = op.code == SED;
+
+				case SEC, CLC:
+					cf = op.code == SEC;
+
+				case SBC:
+					var ad = getAddress(op.addressing);
+					var v = getValue(op.addressing, ad);
+					accumulator = accumulator - v - (cf ? 0 : 1);
+					if (accumulator > 0xFF)
+					{
+						cf = false;
+						accumulator &= 0xFF;
+					}
+					value = accumulator;
+
 				case LDA:
 					var ad = getAddress(op.addressing);
 					accumulator = getValue(op.addressing, ad);
@@ -112,11 +140,17 @@ class VirtualMachine
 				case TXA:
 					accumulator = value = x;
 
+				case TSX:
+					x = value = sp;
+
+				case TAY:
+					y = value = accumulator;
+
 				case TXS:
 					sp = x;
 
 				case TYA:
-					sp = x;
+					sp = value = x;
 
 				case NOP:
 					continue; //No need to retrace instructions
