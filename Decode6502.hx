@@ -7,10 +7,10 @@ enum OPCode //http://www.obelisk.demon.co.uk/6502/reference.html
     AND; //Logical and
     EOR; //Exclusive or (^)
     ADC; //Add with Carry (?)
-    STA;
-    LDA; //Load accumulator
+    STA; //Store accumulator (save it)
+    LDA; //Load accumulator (load it)
     CMP; //Compare
-    SBC;
+    SBC; //Subtract with Carry
 
     ASL; //Arithmetic Shift Left
     ROL; //Rotate left
@@ -28,6 +28,42 @@ enum OPCode //http://www.obelisk.demon.co.uk/6502/reference.html
     LDY; //Load Y (load it)
     CPY; //Compare Y
     CPX; //Compare X
+
+
+    BBC; //Branch if Carry Clear
+    BCS; //Branch if Carry Set
+    BEQ; //Branch if Equal
+    BMI; //Branch if Minus
+    BNE; //Branch if Not Equal
+    BPL; //Branch if Positive
+    BVC; //Branch if Overflow Clear
+    BVS; //Branch if Overflow Set
+    BRK; //Force Interrupt
+    CLC; //Clear Carry Flag
+    CLD; //Clear Decimal Mode
+    CLI; //Clear Interrupt Disable
+    CLV; //Clear Overflow Flag
+    DEX; //Decrement X Register
+    DEY; //Decrement Y Register
+    INX; //Increment X Register
+    INY; //Increment Y Register
+    JSR; //Jump to Subroutine
+    NOP; //No Operation
+    PHA; //Push Accumulator
+    PHP; //Push Processor Status
+    PLA; //Pull Accumulator
+    PLP; //Pull Processor Status
+    RTI; //Return From Interrupt
+    RTS; //Return From Subroutine
+    SEC; //Set Carry Flag
+    SED; //Set Decimal Flag
+    SEI; //Set interrupt disabled
+    TAX; //Transfer Accumulator to X
+    TAY; //Transfer Accumulator to Y
+    TSX; //Transfer Stack Pointer to X
+    TSY; //Transfer Stack Pointer to Y
+    TYA; //Transfer Y to Accumulator
+    TXS; //Transfer X to Stack Pointer
 }
 
 enum AdressingMode //http://www.obelisk.demon.co.uk/6502/addressing.html
@@ -91,6 +127,11 @@ class Decode6502
 
         if (cc == 0)
         {
+            if (bbb == 0x4) //Branches
+            {
+                var branchTable = [BPL, BMI, BVC, BVS, BCC, BCS, BNE, BEQ];
+            }
+
             var opcodeTable = [null, BIT, JMP, JMP_ABS, STY, LDY, CPY, CPX];
             opCode = opcodeTable[aaa];
 
