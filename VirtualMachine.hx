@@ -2,6 +2,8 @@ import Decode6502.AddressingMode;
 import Decode6502.Command;
 import Decode6502.OPCode;
 
+using StringTools;
+
 class VirtualMachine
 {
 	var pc:Int; //Program counter (16b)
@@ -57,8 +59,7 @@ class VirtualMachine
 			op = decoder.getOP(pc);
 			pc++;
 
-			if (op == null)
-				break;
+			var value:Null<Int> = null;
 
 			trace("Execute "+op.code);
 
@@ -67,20 +68,86 @@ class VirtualMachine
 				case STA: //Store Accumulator
 					var ad = getAddress(op.addressing);
 					memory.set(ad, accumulator);
-					//TODO : set flags
+
 				case LDA:
 					var ad = getAddress(op.addressing);
-					accumulator = memory.get(ad);
+					accumulator = getValue(op.addressing, ad);
+
+					zf = accumulator == 0;
+					nf = accumulator & 0x80 == 0x80;
+
+				case LDX:
+					var ad = getAddress(op.addressing);
+					x = getValue(op.addressing, ad);
+
+					zf = x == 0;
+					nf = x & 0x80 == 0x80;
+
+				case LDY:
+					var ad = getAddress(op.addressing);
+					y = getValue(op.addressing, ad);
+
+					zf = y == 0;
+					nf = y & 0x80 == 0x80;
+
 				case INC:
 					var ad = getAddress(op.addressing);
-					memory.set(ad, memory.get(ad) + 1);
+					value = memory.get(ad) + 1;
+					memory.set(ad, value);
+
+				case INX:
+					var value = x++;
+
+				case INY:
+					value = y++;
+
+				case DEC:
+					var ad = getAddress(op.addressing);
+					value = memory.get(ad) - 1;
+					memory.set(ad, value);
+
+				case TAX:
+					x = value = accumulator;
+
+				case TXA:
+					accumulator = value = x;
+
+				case TXS:
+					sp = x;
+
+				case TYA:
+					sp = x;
+
+				case NOP:
+					continue; //No need to retrace instructions
+
+				case BRK:
+					break;
+
 				default:
 					trace("INSTRUCTION NOT IMPLEMENTED: "+op.code);
+			}
+
+			if (value != null)
+			{
+				zf = value == 0;
+				nf = value & 0x80 == 0x80;
 			}
 
 			trace(dump_machine_state());
 		}
 		while (op != null);
+	}
+
+	private function getValue(add:AddressingMode, address:Int):Int
+	{
+		switch (add)
+		{
+			case IMMEDIATE:
+				return address & 0xFF;
+			default:
+				return memory.get(address);
+		}
 	}
 
 	private function getAddress(add:AddressingMode):Int
@@ -90,6 +157,9 @@ class VirtualMachine
 		switch (add)
 		{
 			case ZERO_PAGE:
+				address = decoder.getByte(pc);
+				pc++;
+			case IMMEDIATE:
 				address = decoder.getByte(pc);
 				pc++;
 			default:
@@ -102,11 +172,11 @@ class VirtualMachine
 	private function dump_machine_state()
 	{
 		var out = "== MACHINE STATE =="+"\n";
-		out += "PC => "+pc+"\n";
-		out += "SP => "+sp+"\n";
-		out += "AC => "+accumulator+"\n";
-		out += "RX => "+x+"\n";
-		out += "RY => "+y+"\n";
+		out += "PC => "+pc.hex(2)+"\n";
+		out += "SP => "+sp.hex(2)+"\n";
+		out += "AC => "+accumulator.hex(2)+"\n";
+		out += "RX => "+x.hex(2)+"\n";
+		out += "RY => "+y.hex(2)+"\n";
 		out += "\n";
 		out += "CF ZF ID DM"+"\n";
 		out += (cf ? " 1" : " 0")+" "+(zf ? " 1" : " 0")+" "+(id ? " 1" : " 0")+" "+(dm ? " 1" : " 0")+"\n";

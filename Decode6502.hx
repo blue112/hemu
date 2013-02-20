@@ -30,7 +30,7 @@ enum OPCode //http://www.obelisk.demon.co.uk/6502/reference.html
     CPX; //Compare X
 
 
-    BBC; //Branch if Carry Clear
+    BCC; //Branch if Carry Clear
     BCS; //Branch if Carry Set
     BEQ; //Branch if Equal
     BMI; //Branch if Minus
@@ -38,6 +38,7 @@ enum OPCode //http://www.obelisk.demon.co.uk/6502/reference.html
     BPL; //Branch if Positive
     BVC; //Branch if Overflow Clear
     BVS; //Branch if Overflow Set
+
     BRK; //Force Interrupt
     CLC; //Clear Carry Flag
     CLD; //Clear Decimal Mode
@@ -64,6 +65,7 @@ enum OPCode //http://www.obelisk.demon.co.uk/6502/reference.html
     TSY; //Transfer Stack Pointer to Y
     TYA; //Transfer Y to Accumulator
     TXS; //Transfer X to Stack Pointer
+    TXA; //Transfer X to Stack Pointer
 }
 
 enum AddressingMode //http://www.obelisk.demon.co.uk/6502/addressing.html
@@ -118,9 +120,6 @@ class Decode6502
 
     private function decodeByte(byte:Int):Command
     {
-        if (byte == 0)
-            return null;
-
         var opCode:OPCode = null;
         var addressing:AddressingMode = null;
 
@@ -128,7 +127,22 @@ class Decode6502
         var bbb = (byte & 0x1C) >> 2; //Middle 3 bits
         var cc = byte & 0x3; //Last two bytes
 
-        if (cc == 0)
+        if (byte == 0) opCode = BRK;
+        else if (byte == 0x20) opCode = JSR;
+        else if (byte == 0x40) opCode = RTI;
+        else if (byte == 0x60) opCode = RTS;
+        else if (byte == 0x8A) opCode = TXA;
+        else if (byte == 0x9A) opCode = TXS;
+        else if (byte == 0xAA) opCode = TAX;
+        else if (byte == 0xBA) opCode = TSX;
+        else if (byte == 0xCA) opCode = DEX;
+        else if (byte == 0xEA) opCode = NOP;
+        else if (byte & 0xF == 0x8)
+        {
+            var opcodeTable = [PHP, CLC, PLP, SEC, PHA, CLI, PLA, SEI, DEY, TYA, TAY, CLV, INY, CLD, INX, SED];
+            opCode = opcodeTable[byte >> 8];
+        }
+        else if (cc == 0)
         {
             if (bbb == 0x4) //Branches
             {
@@ -138,16 +152,16 @@ class Decode6502
             var opcodeTable = [null, BIT, JMP, JMP_ABS, STY, LDY, CPY, CPX];
             opCode = opcodeTable[aaa];
 
-            var adressingTable = [IMMEDIATE, ZERO_PAGE, null, ABSOLUTE, null, ZERO_PAGE_X, null, ABSOLUTE_X];
-            addressing = adressingTable[bbb];
+            var addressingTable = [IMMEDIATE, ZERO_PAGE, null, ABSOLUTE, null, ZERO_PAGE_X, null, ABSOLUTE_X];
+            addressing = addressingTable[bbb];
         }
         else if (cc == 1)
         {
             var opcodeTable = [ORA, AND, EOR, ADC, STA, LDA, CMP, SBC];
             opCode = opcodeTable[aaa];
 
-            var adressingTable = [ZERO_PAGE_X_2, ZERO_PAGE, IMMEDIATE, ABSOLUTE, ZERO_PAGE_Y_2, ZERO_PAGE, ABSOLUTE_Y, ABSOLUTE_X];
-            addressing = adressingTable[bbb];
+            var addressingTable = [ZERO_PAGE_X_2, ZERO_PAGE, IMMEDIATE, ABSOLUTE, ZERO_PAGE_Y_2, ZERO_PAGE, ABSOLUTE_Y, ABSOLUTE_X];
+            addressing = addressingTable[bbb];
         }
         else if (cc == 2)
         {
@@ -155,7 +169,17 @@ class Decode6502
             opCode = opcodeTable[aaa];
 
             //TODO : Decode BBB
-            addressing = ZERO_PAGE;
+            var addressingTable = [IMMEDIATE, ZERO_PAGE, ACCUMULATOR, ABSOLUTE, ZERO_PAGE_X, ABSOLUTE_X];
+            addressing = addressingTable[bbb];
+
+            if ((opCode == STX || opCode == LDX) && addressing == ZERO_PAGE_X)
+            {
+                addressing = ZERO_PAGE_Y;
+            }
+            else if (opCode == LDX && addressing == ABSOLUTE_X)
+            {
+                addressing = ABSOLUTE_Y;
+            }
         }
 
         return {code:opCode, addressing:addressing};
