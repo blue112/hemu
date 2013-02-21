@@ -3,6 +3,7 @@ import Decode6502.Command;
 import Decode6502.OPCode;
 
 using StringTools;
+using TerminalFormatter;
 
 class VirtualMachine
 {
@@ -23,13 +24,14 @@ class VirtualMachine
 	var nf:Bool; //Negative Flag
 
 	var memory:IntHash<Int>;
+	var stack:Array<Int>;
 
 	var decoder:Decode6502;
 
-	private function new(decoder:Decode6502)
+	private function new(decoder:Decode6502, ?startPoint:Int = 0x10)
 	{
-		pc = 0; //?
-		sp = 0; //??
+		pc = 0;
+		sp = 0xFD;
 		accumulator = 0;
 		x = 0;
 		y = 0;
@@ -43,12 +45,27 @@ class VirtualMachine
 		nf = false;
 
 		memory = new IntHash();
-		for (i in 0...0xFFFF)
-			memory.set(i, 0);
+		for (i in 0...0x07FF)
+			memory.set(i, 0xFF);
 
 		this.decoder = decoder;
 
+		pc = startPoint;
 		run();
+	}
+
+	private function pullStack():Int
+	{
+		sp++;
+		var value = memory.get(0x100 + sp);
+
+		return value;
+	}
+
+	private function pushStack(value:Int):Void
+	{
+		memory.set(0x100 + sp, value);
+		sp--;
 	}
 
 	private function run()
@@ -61,7 +78,7 @@ class VirtualMachine
 
 			var value:Null<Int> = null;
 
-			trace("Execute "+op.code);
+			Sys.print("\nExecute \033[1;33m"+op.code+"\033[0m");
 
 			switch (op.code)
 			{
@@ -85,6 +102,13 @@ class VirtualMachine
 
 				case SEC, CLC:
 					cf = op.code == SEC;
+
+				case BIT:
+					var ad = getAddress(op.addressing);
+					var v = getValue(op.addressing, ad);
+					zf = accumulator == v;
+					of = v & 0x40 != 0;
+					nf = v & 0x80 != 0;
 
 				case SBC:
 					var ad = getAddress(op.addressing);
@@ -129,6 +153,18 @@ class VirtualMachine
 
 					value = accumulator;
 
+				case JSR:
+					var ad = getAddress(op.addressing);
+					pushStack(pc & 0xFF);
+					pushStack(pc >> 8);
+
+					pc = ad;
+
+				case RTS:
+					var to = pullStack() << 8;
+					to += pullStack();
+					pc = to;
+
 				case AND:
 					var ad = getAddress(op.addressing);
 					var v = getValue(op.addressing, ad);
@@ -143,6 +179,55 @@ class VirtualMachine
 					cf = v & 0x80 != 0;
 					value = (v << 1) & 0xFF;
 
+					if (op.addressing == ACCUMULATOR)
+					{
+						accumulator = value;
+					}
+					else
+					{
+						memory.set(ad, value);
+					}
+
+				case LSR:
+					var ad = getAddress(op.addressing);
+					var v = getValue(op.addressing, ad);
+					cf = v & 1 != 0;
+					value = v >> 1;
+
+					if (op.addressing == ACCUMULATOR)
+					{
+						accumulator = value;
+					}
+					else
+					{
+						memory.set(ad, value);
+					}
+
+				case ROL:
+					var ad = getAddress(op.addressing);
+					var v = getValue(op.addressing, ad);
+					var new_cf = v & 0x80 != 0;
+					value = (v << 1) & 0xFF;
+					value += cf ? 1 : 0;
+
+					cf = new_cf;
+					if (op.addressing == ACCUMULATOR)
+					{
+						accumulator = value;
+					}
+					else
+					{
+						memory.set(ad, value);
+					}
+
+				case ROR:
+					var ad = getAddress(op.addressing);
+					var v = getValue(op.addressing, ad);
+					var new_cf = v & 1 != 0;
+					value = (v >> 1) & 0xFF;
+					value += cf ? 0x80 : 0;
+
+					cf = new_cf;
 					if (op.addressing == ACCUMULATOR)
 					{
 						accumulator = value;
@@ -177,7 +262,11 @@ class VirtualMachine
 					var jump_to = getAddress(op.addressing);
 
 					if (to_check == check_against)
-						pc += jump_to;
+						pc = jump_to;
+
+				case JMP:
+					var ad = getAddress(op.addressing);
+					pc = ad;
 
 				case LDA:
 					var ad = getAddress(op.addressing);
@@ -222,6 +311,12 @@ class VirtualMachine
 					accumulator = value ^ accumulator;
 					value = accumulator;
 
+				case ORA:
+					var ad = getAddress(op.addressing);
+					value = getValue(op.addressing, ad);
+					accumulator = value | accumulator;
+					value = accumulator;
+
 				case DEX:
 					x--;
 					value = x;
@@ -249,13 +344,15 @@ class VirtualMachine
 					sp = value = x;
 
 				case NOP:
-					continue; //No need to retrace instructions
+					//Nothing to do
 
 				case BRK:
+					trace(dump_machine_state());
 					break;
 
 				default:
 					trace("INSTRUCTION NOT IMPLEMENTED: "+op.code);
+					break;
 			}
 
 			if (value != null)
@@ -264,7 +361,7 @@ class VirtualMachine
 				nf = value & 0x80 == 0x80;
 			}
 
-			trace(dump_machine_state());
+			Sys.print(dump_machine_state());
 		}
 		while (op != null);
 	}
@@ -280,6 +377,21 @@ class VirtualMachine
 		}
 	}
 
+	private function getSigned(byte:Int)
+	{
+		byte = byte & 0xFF;
+
+		var negative = byte & 0x80 != 0;
+		if (negative)
+		{
+			return ~(byte - 1);
+		}
+		else
+		{
+			return byte;
+		}
+	}
+
 	private function getAddress(add:AddressingMode):Int
 	{
 		var address = 0;
@@ -292,6 +404,14 @@ class VirtualMachine
 			case IMMEDIATE:
 				address = decoder.getByte(pc);
 				pc++;
+			case RELATIVE:
+				address = getSigned(decoder.getByte(pc));
+				pc++;
+
+				address += pc;
+			case ABSOLUTE:
+				address = decoder.getByte(pc) + (decoder.getByte(pc + 1) << 8);
+				pc += 2;
 			default:
 				trace("ADDRESSING MODE NOT IMPLEMENTED "+add);
 		}
@@ -301,24 +421,28 @@ class VirtualMachine
 
 	private function dump_machine_state()
 	{
-		var out = "== MACHINE STATE =="+"\n";
-		out += "PC => "+pc.hex(2)+"\n";
-		out += "SP => "+sp.hex(2)+"\n";
-		out += "AC => "+accumulator.hex(2)+"\n";
-		out += "RX => "+x.hex(2)+"\n";
-		out += "RY => "+y.hex(2)+"\n";
-		out += "\n";
-		out += "CF ZF ID DM"+"\n";
-		out += (cf ? " 1" : " 0")+" "+(zf ? " 1" : " 0")+" "+(id ? " 1" : " 0")+" "+(dm ? " 1" : " 0")+"\n";
-		out += "BC OF NF"+"\n";
-		out += (bc ? " 1" : " 0")+" "+(of ? " 1" : " 0")+" "+(nf ? " 1" : " 0")+"\n";
+		var out = " -- ";
+		out += "PC:"+pc.format()+" ";
+		out += "SP:"+sp.format()+" ";
+		out += "AC:"+accumulator.format()+" ";
+		out += "RX:"+x.format()+" ";
+		out += "RY:"+y.format()+" ";
+		out += (if (cf) "CF".bold() else "CF")+" ";
+		out += (if (zf) "ZF".bold() else "ZF")+" ";
+		out += (if (id) "ID".bold() else "ID")+" ";
+		out += (if (dm) "DM".bold() else "DM")+" ";
+		out += (if (bc) "BC".bold() else "BC")+" ";
+		out += (if (of) "OF".bold() else "OF")+" ";
+		out += (if (nf) "NF".bold() else "NF");
 
 		return out;
 	}
 
 	static public function main()
 	{
-		var d = new Decode6502(sys.io.File.getBytes("test.rom"));
-		var vm = new VirtualMachine(d);
+		var fileName = Sys.args()[0];
+
+		var d = new Decode6502(sys.io.File.getBytes(fileName), 0xC000 - 0x10);
+		var vm = new VirtualMachine(d, 0xC000);
 	}
 }

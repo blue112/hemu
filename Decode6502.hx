@@ -97,35 +97,37 @@ typedef Command =
 class Decode6502
 {
     var s:Bytes;
+    var offset:Int;
 
     static public function main()
     {
 
     }
 
-    public function new(file:Bytes)
+    public function new(file:Bytes, offset:Int)
     {
         this.s = file;
+        this.offset = offset;
     }
 
     public function getByte(address:Int):Int
     {
-        return s.get(address);
+        return s.get(address - offset);
     }
 
     public function getOP(address:Int):Command
     {
-        return decodeByte(s.get(address));
+        return decodeByte(getByte(address));
     }
 
     private function decodeByte(byte:Int):Command
     {
         var opCode:OPCode = null;
-        var addressing:AddressingMode = null;
+        var addressing:AddressingMode = ABSOLUTE;
 
-        var aaa = (byte & 0xE0) >> 5; //First 3 bytes
+        var aaa = (byte & 0xE0) >> 5; //First 3 bits
         var bbb = (byte & 0x1C) >> 2; //Middle 3 bits
-        var cc = byte & 0x3; //Last two bytes
+        var cc = byte & 0x3; //Last two bits
 
         if (byte == 0) opCode = BRK;
         else if (byte == 0x20) opCode = JSR;
@@ -140,20 +142,24 @@ class Decode6502
         else if (byte & 0xF == 0x8)
         {
             var opcodeTable = [PHP, CLC, PLP, SEC, PHA, CLI, PLA, SEI, DEY, TYA, TAY, CLV, INY, CLD, INX, SED];
-            opCode = opcodeTable[byte >> 8];
+            opCode = opcodeTable[byte >> 4];
         }
         else if (cc == 0)
         {
             if (bbb == 0x4) //Branches
             {
                 var branchTable = [BPL, BMI, BVC, BVS, BCC, BCS, BNE, BEQ];
+                opCode = branchTable[aaa];
+                addressing = RELATIVE;
             }
+            else
+            {
+                var opcodeTable = [null, BIT, JMP, JMP_ABS, STY, LDY, CPY, CPX];
+                opCode = opcodeTable[aaa];
 
-            var opcodeTable = [null, BIT, JMP, JMP_ABS, STY, LDY, CPY, CPX];
-            opCode = opcodeTable[aaa];
-
-            var addressingTable = [IMMEDIATE, ZERO_PAGE, null, ABSOLUTE, null, ZERO_PAGE_X, null, ABSOLUTE_X];
-            addressing = addressingTable[bbb];
+                var addressingTable = [IMMEDIATE, ZERO_PAGE, null, ABSOLUTE, null, ZERO_PAGE_X, null, ABSOLUTE_X];
+                addressing = addressingTable[bbb];
+            }
         }
         else if (cc == 1)
         {
