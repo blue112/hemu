@@ -103,6 +103,9 @@ class VirtualMachine
 				case SEC, CLC:
 					cf = op.code == SEC;
 
+				case CLV:
+					of = false;
+
 				case BIT:
 					var ad = getAddress(op.addressing);
 					var v = getValue(op.addressing, ad);
@@ -117,7 +120,12 @@ class VirtualMachine
 					if (accumulator > 0xFF)
 					{
 						cf = false;
-						accumulator &= 0xFF;
+						accumulator = 0xFF;
+					}
+					if (accumulator < 0)
+					{
+						accumulator = 0xFF;
+						of = true;
 					}
 
 					//Overflow flag ??
@@ -288,6 +296,32 @@ class VirtualMachine
 
 					zf = y == 0;
 					nf = y & 0x80 == 0x80;
+
+				case PHA:
+					pushStack(accumulator);
+
+				case PHP:
+					var arFlags = [nf, of, false, bc, dm, id, zf, cf];
+					var value = 0;
+					for (i in 0...arFlags.length)
+					{
+						if (arFlags[i])
+							value |= 1 << i;
+					}
+					pushStack(value);
+
+				case PLP:
+					var value = pullStack();
+					cf = value & 0x1 != 0;
+					zf = value & 0x2 != 0;
+					id = value & 0x4 != 0;
+					dm = value & 0x8 != 0;
+					bc = value & 0x10 != 0;
+					of = value & 0x40 != 0;
+					nf = value & 0x80 != 0;
+
+				case PLA:
+					accumulator = value = pullStack();
 
 				case INC:
 					var ad = getAddress(op.addressing);
