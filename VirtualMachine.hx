@@ -253,7 +253,7 @@ class VirtualMachine
 
 					var check_against = switch (op.code)
 					{
-						case BCC, BEQ, BMI, BVC:
+						case BCS, BEQ, BMI, BVS:
 							true;
 						default:
 							false;
