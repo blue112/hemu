@@ -95,7 +95,89 @@ class VirtualMachine
 						cf = false;
 						accumulator &= 0xFF;
 					}
+
+					//Overflow flag ??
+
 					value = accumulator;
+
+				case CMP, CPY, CPX:
+					var ad = getAddress(op.addressing);
+					var v = getValue(op.addressing, ad);
+
+					var compare_to = switch (op.code)
+					{
+						case CMP: accumulator;
+						case CPX: x;
+						default: y;
+					}
+
+					cf = compare_to >= v;
+					zf = compare_to == v;
+					nf = false; //?
+
+				case ADC:
+					var ad = getAddress(op.addressing);
+					var v = getValue(op.addressing, ad);
+					accumulator = accumulator + v + (cf ? 1 : 0);
+					if (accumulator > 0xFF)
+					{
+						cf = true;
+						accumulator &= 0xFF;
+					}
+
+					//Overflow flag ??
+
+					value = accumulator;
+
+				case AND:
+					var ad = getAddress(op.addressing);
+					var v = getValue(op.addressing, ad);
+
+					accumulator &= v;
+					value = accumulator;
+
+				case ASL:
+					var ad = getAddress(op.addressing);
+					var v = getValue(op.addressing, ad);
+
+					cf = v & 0x80 != 0;
+					value = (v << 1) & 0xFF;
+
+					if (op.addressing == ACCUMULATOR)
+					{
+						accumulator = value;
+					}
+					else
+					{
+						memory.set(ad, value);
+					}
+
+				case BCC, BCS, BEQ, BMI, BNE, BPL, BVC, BVS:
+					var to_check = switch (op.code)
+					{
+						case BCC, BCS:
+							cf;
+						case BEQ, BNE:
+							zf;
+						case BMI, BPL:
+							nf;
+						case BVC, BVS:
+							of;
+						default: false;
+					}
+
+					var check_against = switch (op.code)
+					{
+						case BCC, BEQ, BMI, BVC:
+							true;
+						default:
+							false;
+					}
+
+					var jump_to = getAddress(op.addressing);
+
+					if (to_check == check_against)
+						pc += jump_to;
 
 				case LDA:
 					var ad = getAddress(op.addressing);
@@ -133,6 +215,20 @@ class VirtualMachine
 					var ad = getAddress(op.addressing);
 					value = memory.get(ad) - 1;
 					memory.set(ad, value);
+
+				case EOR:
+					var ad = getAddress(op.addressing);
+					value = getValue(op.addressing, ad);
+					accumulator = value ^ accumulator;
+					value = accumulator;
+
+				case DEX:
+					x--;
+					value = x;
+
+				case DEY:
+					y--;
+					value = y;
 
 				case TAX:
 					x = value = accumulator;
