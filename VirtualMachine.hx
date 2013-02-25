@@ -24,11 +24,15 @@ class VirtualMachine
 	var nf:Bool; //Negative Flag
 
 	var memory:IntHash<Int>;
-	var stack:Array<Int>;
 
 	var decoder:Decode6502;
 
-	private function new(decoder:Decode6502, ?startPoint:Int = 0x10)
+	static public var colorEnabled:Bool = true;
+	static private inline var INTERRUPT_VECTOR_NMI = 0xFFFA; // Non-maskable interrupt.
+	static private inline var INTERRUPT_VECTOR_RESET = 0xFFFC; // Reset interrupt.
+	static private inline var INTERRUPT_VECTOR_IRQ = 0xFFFE; // Interrupt request or BRK instruction.
+
+	private function new(decoder:Decode6502)
 	{
 		pc = 0;
 		sp = 0xFD;
@@ -45,12 +49,32 @@ class VirtualMachine
 		nf = false;
 
 		memory = new IntHash();
+		for (i in 0...0xFFFF)
+			memory.set(i, 0);
+
 		for (i in 0...0x07FF)
 			memory.set(i, 0xFF);
 
+		//Load rom into ram
+		/*for (i in 0x8000...0xFFFF)
+		{
+			memory.set(i, decoder.getByte(i - 0x8000));
+		}*/
+		for (i in 0x8000...0xBFFF)
+		{
+			memory.set(i, decoder.getByte(i - 0x8000));
+		}
+		for (i in 0xC000...0xFFFF)
+		{
+			memory.set(i, decoder.getByte(i - 0xC000));
+		}
+
+		memory.set(0x2002, 0x80);
+
 		this.decoder = decoder;
 
-		pc = startPoint;
+		//pc = 0x8000;
+		pc = 0x8000;
 		run();
 	}
 
@@ -68,17 +92,29 @@ class VirtualMachine
 		sp--;
 	}
 
+	private function setProcessorFlags(value:Int):Void
+	{
+		cf = value & 0x1 != 0;
+		zf = value & 0x2 != 0;
+		id = value & 0x4 != 0;
+		dm = value & 0x8 != 0;
+		bc = value & 0x10 != 0;
+		of = value & 0x40 != 0;
+		nf = value & 0x80 != 0;
+	}
+
 	private function run()
 	{
 		var op;
 		do
 		{
-			op = decoder.getOP(pc);
-			pc++;
+			var b = memory.get(pc);
+			op = decoder.decodeByte(b);
 
 			var value:Null<Int> = null;
 
-			Sys.print("\nExecute \033[1;33m"+op.code+"\033[0m");
+			Sys.print("\n"+pc.hex(4)+" "+Std.string(op.code).yellow()+" "+b.format());
+			pc++;
 
 			switch (op.code)
 			{
@@ -109,28 +145,9 @@ class VirtualMachine
 				case BIT:
 					var ad = getAddress(op.addressing);
 					var v = getValue(op.addressing, ad);
-					zf = accumulator == v;
+					zf = accumulator & v == 0;
 					of = v & 0x40 != 0;
 					nf = v & 0x80 != 0;
-
-				case SBC:
-					var ad = getAddress(op.addressing);
-					var v = getValue(op.addressing, ad);
-					accumulator = accumulator - v - (cf ? 0 : 1);
-					if (accumulator > 0xFF)
-					{
-						cf = false;
-						accumulator = 0xFF;
-					}
-					if (accumulator < 0)
-					{
-						accumulator = 0xFF;
-						of = true;
-					}
-
-					//Overflow flag ??
-
-					value = accumulator;
 
 				case CMP, CPY, CPX:
 					var ad = getAddress(op.addressing);
@@ -145,32 +162,81 @@ class VirtualMachine
 
 					cf = compare_to >= v;
 					zf = compare_to == v;
-					nf = false; //?
+					nf = (compare_to - v) < 0 || (compare_to - v) & 0x80 == 0x80;
 
 				case ADC:
 					var ad = getAddress(op.addressing);
 					var v = getValue(op.addressing, ad);
+					var acc_anc_value = accumulator;
+
 					accumulator = accumulator + v + (cf ? 1 : 0);
 					if (accumulator > 0xFF)
 					{
 						cf = true;
 						accumulator &= 0xFF;
 					}
+					else
+					{
+						cf = false;
+					}
 
-					//Overflow flag ??
+					if (acc_anc_value <= 0x7F && accumulator > 0x7F && v & 0x80 != 0x80)
+					{
+						of = true;
+					}
+					else
+					{
+						of = false;
+					}
+
+					value = accumulator;
+
+				case SBC:
+					var ad = getAddress(op.addressing);
+					var v = getValue(op.addressing, ad);
+					var acc_anc_value = accumulator;
+
+					accumulator = accumulator - v - (cf ? 0 : 1);
+					if (accumulator > 0xFF || accumulator < 0) //Overflow
+					{
+						cf = false;
+					}
+					else
+					{
+						cf = true;
+					}
+
+					if (accumulator > 127 || accumulator < -128 || acc_anc_value > 0x7F && accumulator < 0x7F)
+					{
+						of = true;
+					}
+					else
+					{
+						of = false;
+					}
+
+					if (accumulator < 0)
+						accumulator += 0xFF + 1;
 
 					value = accumulator;
 
 				case JSR:
 					var ad = getAddress(op.addressing);
-					pushStack(pc & 0xFF);
-					pushStack(pc >> 8);
+					pushStack(pc - 1 >> 8);
+					pushStack(pc - 1 & 0xFF);
 
 					pc = ad;
 
 				case RTS:
-					var to = pullStack() << 8;
-					to += pullStack();
+					var to = pullStack();
+					to += pullStack() << 8;
+					pc = to + 1;
+
+				case RTI:
+					setProcessorFlags(pullStack());
+					var to = pullStack();
+					to += pullStack() << 8;
+
 					pc = to;
 
 				case AND:
@@ -270,10 +336,16 @@ class VirtualMachine
 					var jump_to = getAddress(op.addressing);
 
 					if (to_check == check_against)
+					{
 						pc = jump_to;
+					}
 
 				case JMP:
 					var ad = getAddress(op.addressing);
+					pc = ad;
+
+				case JMA:
+					var ad = getAddress(INDIRECT);
 					pc = ad;
 
 				case LDA:
@@ -292,7 +364,7 @@ class VirtualMachine
 
 				case LDY:
 					var ad = getAddress(op.addressing);
-					y = getValue(op.addressing, ad);
+					y = getValue(op.addressing, ad) & 0xFF;
 
 					zf = y == 0;
 					nf = y & 0x80 == 0x80;
@@ -301,7 +373,7 @@ class VirtualMachine
 					pushStack(accumulator);
 
 				case PHP:
-					var arFlags = [nf, of, false, bc, dm, id, zf, cf];
+					var arFlags = [cf, zf, id, dm, true, true, of, nf]; //BC is always pushed as true
 					var value = 0;
 					for (i in 0...arFlags.length)
 					{
@@ -312,13 +384,7 @@ class VirtualMachine
 
 				case PLP:
 					var value = pullStack();
-					cf = value & 0x1 != 0;
-					zf = value & 0x2 != 0;
-					id = value & 0x4 != 0;
-					dm = value & 0x8 != 0;
-					bc = value & 0x10 != 0;
-					of = value & 0x40 != 0;
-					nf = value & 0x80 != 0;
+					setProcessorFlags(value);
 
 				case PLA:
 					accumulator = value = pullStack();
@@ -326,17 +392,23 @@ class VirtualMachine
 				case INC:
 					var ad = getAddress(op.addressing);
 					value = memory.get(ad) + 1;
+					value &= 0xFF;
 					memory.set(ad, value);
 
 				case INX:
-					var value = x++;
+					x = (x + 1);
+					x &= 0xFF;
+					value = x;
 
 				case INY:
-					value = y++;
+					y = y + 1;
+					x &= 0xFF;
+					value = y;
 
 				case DEC:
 					var ad = getAddress(op.addressing);
 					value = memory.get(ad) - 1;
+					value &= 0xFF;
 					memory.set(ad, value);
 
 				case EOR:
@@ -348,15 +420,15 @@ class VirtualMachine
 				case ORA:
 					var ad = getAddress(op.addressing);
 					value = getValue(op.addressing, ad);
-					accumulator = value | accumulator;
+					accumulator |= value;
 					value = accumulator;
 
 				case DEX:
-					x--;
+					x = (x - 1) & 0xFF;
 					value = x;
 
 				case DEY:
-					y--;
+					y = (y - 1) & 0xFF;
 					value = y;
 
 				case TAX:
@@ -369,15 +441,16 @@ class VirtualMachine
 					x = value = sp;
 
 				case TAY:
-					y = value = accumulator;
+					y = value = accumulator & 0xFF;
 
 				case TXS:
 					sp = x;
 
 				case TYA:
-					sp = value = x;
+					accumulator = value = y;
 
-				case NOP:
+				case NOP(ignore):
+					pc += ignore;
 					//Nothing to do
 
 				case BRK:
@@ -398,6 +471,26 @@ class VirtualMachine
 			Sys.print(dump_machine_state());
 		}
 		while (op != null);
+
+		//Try to output test result
+		/*if (memory.get(0x6001) == 0xDE && memory.get(0x6002) == 0xB0)
+		{
+			var out = "";
+			var pos = 0x6004;
+			var value;
+			do
+			{
+				value = memory.get(pos);
+				out += String.fromCharCode(value);
+				pos++;
+			}
+			while (value != 0);
+			trace(out);
+		}
+		else
+		{
+			trace("Nothing like that in ram :/");
+		}*/
 	}
 
 	private function getValue(add:AddressingMode, address:Int):Int
@@ -406,6 +499,10 @@ class VirtualMachine
 		{
 			case IMMEDIATE:
 				return address & 0xFF;
+
+			case ACCUMULATOR:
+				return accumulator;
+
 			default:
 				return memory.get(address);
 		}
@@ -418,7 +515,7 @@ class VirtualMachine
 		var negative = byte & 0x80 != 0;
 		if (negative)
 		{
-			return ~(byte - 1);
+			return -((~(byte - 1)) & 0xFF);
 		}
 		else
 		{
@@ -432,20 +529,74 @@ class VirtualMachine
 
 		switch (add)
 		{
+			case ACCUMULATOR:
+				address = 0; //Handled in getValue
+
 			case ZERO_PAGE:
-				address = decoder.getByte(pc);
+				address = memory.get(pc);
 				pc++;
+
+			case ZERO_PAGE_X, ZERO_PAGE_Y:
+				address = memory.get(pc);
+				pc++;
+
+				if (add == ZERO_PAGE_X)
+					address += x;
+				else if (add == ZERO_PAGE_Y)
+					address += y;
+
+				address &= 0xFF;
+
 			case IMMEDIATE:
-				address = decoder.getByte(pc);
+				address = memory.get(pc);
 				pc++;
+
 			case RELATIVE:
-				address = getSigned(decoder.getByte(pc));
+				address = getSigned(memory.get(pc));
 				pc++;
 
 				address += pc;
-			case ABSOLUTE:
-				address = decoder.getByte(pc) + (decoder.getByte(pc + 1) << 8);
+
+			case INDIRECT:
+				address = memory.get(pc) + (memory.get(pc + 1) << 8);
 				pc += 2;
+
+				var next_addr = address + 1;
+				if (next_addr & 0xFF == 0x00)
+				{
+					next_addr -= 0x0100;
+				}
+
+				address = memory.get(address) + (memory.get(next_addr) << 8);
+
+			case ZERO_PAGE_X_2:
+				address = memory.get(pc);
+				pc++;
+
+				address += x;
+				address &= 0xFF;
+
+				address = memory.get(address) + (memory.get((address + 1) & 0xFF) << 8);
+
+			case ZERO_PAGE_Y_2:
+				address = memory.get(pc);
+				pc++;
+
+				address = memory.get(address) + (memory.get((address + 1) & 0xFF) << 8);
+				address += y;
+				address &= 0xFFFF;
+
+			case ABSOLUTE, ABSOLUTE_X, ABSOLUTE_Y:
+				address = memory.get(pc) + (memory.get(pc + 1) << 8);
+				pc += 2;
+
+				if (add == ABSOLUTE_X)
+					address += x;
+				else if (add == ABSOLUTE_Y)
+					address += y;
+
+				address &= 0xFFFF;
+
 			default:
 				trace("ADDRESSING MODE NOT IMPLEMENTED "+add);
 		}
@@ -456,11 +607,11 @@ class VirtualMachine
 	private function dump_machine_state()
 	{
 		var out = " -- ";
-		out += "PC:"+pc.format()+" ";
-		out += "SP:"+sp.format()+" ";
 		out += "AC:"+accumulator.format()+" ";
+		//out += "PC:"+pc.format()+" ";
 		out += "RX:"+x.format()+" ";
 		out += "RY:"+y.format()+" ";
+		out += "SP:"+sp.format()+" ";
 		out += (if (cf) "CF".bold() else "CF")+" ";
 		out += (if (zf) "ZF".bold() else "ZF")+" ";
 		out += (if (id) "ID".bold() else "ID")+" ";
@@ -474,9 +625,15 @@ class VirtualMachine
 
 	static public function main()
 	{
-		var fileName = Sys.args()[0];
+		var args = Sys.args();
+		var fileName = args[0];
 
-		var d = new Decode6502(sys.io.File.getBytes(fileName), 0xC000 - 0x10);
-		var vm = new VirtualMachine(d, 0xC000);
+		if (args.length > 1)
+		{
+			VirtualMachine.colorEnabled = args[1] != "--no-colors";
+		}
+
+		var d = new Decode6502(sys.io.File.getBytes(fileName), 0x10);
+		var vm = new VirtualMachine(d);
 	}
 }
