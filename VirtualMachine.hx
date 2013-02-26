@@ -113,7 +113,7 @@ class VirtualMachine
 
 			var value:Null<Int> = null;
 
-			Sys.print("\n"+pc.hex(4)+" "+Std.string(op.code).yellow()+" "+b.format());
+			Sys.print("\n"+pc.hex(4)+" "+Std.string(op.code).rpad(" ", 6).yellow()+" "+b.format());
 			pc++;
 
 			switch (op.code)
@@ -402,7 +402,7 @@ class VirtualMachine
 
 				case INY:
 					y = y + 1;
-					x &= 0xFF;
+					y &= 0xFF;
 					value = y;
 
 				case DEC:

@@ -68,6 +68,9 @@ enum OPCode //http://www.obelisk.demon.co.uk/6502/reference.html
     TYA; //Transfer Y to Accumulator
     TXS; //Transfer X to Stack Pointer
     TXA; //Transfer X to Stack Pointer
+
+    LAX; //Load both accumulator and X
+    SAX; //AND, CMP and Store
 }
 
 enum AddressingMode //http://www.obelisk.demon.co.uk/6502/addressing.html
@@ -181,6 +184,7 @@ class Decode6502
             byte == 0xDC ||
             byte == 0xFC)
                 opCode = NOP(2);
+
         else if (byte & 0xF == 0x8)
         {
             var opcodeTable = [PHP, CLC, PLP, SEC, PHA, CLI, PLA, SEI, DEY, TYA, TAY, CLV, INY, CLD, INX, SED];
@@ -226,6 +230,13 @@ class Decode6502
             else if (opCode == LDX && addressing == ABSOLUTE_X)
             {
                 addressing = ABSOLUTE_Y;
+            }
+        }
+        else if (cc == 3) //Special instructions
+        {
+            if (aaa == 5)
+            {
+                opCode = LAX;
             }
         }
 
