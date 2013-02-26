@@ -2,6 +2,7 @@ hemu
 ====
 
 Haxe NES Emulator
+
 **This emulator cannot run any game currently**
 
 Currently mostly an incomplete 6502 CPU VM
@@ -31,9 +32,9 @@ It will be handled in a future version.
 How to compile
 ==============
 
-To compile Hemu, you'll need the lastest 2.x [Haxe](http://haxe.org/) version and the 1.8.2 [Neko](http://nekovm.org/) version.
-Create the folder bin with `mkdir bin`
-Then, just run `haxe make.hxml` will produce the out.n file in the bin/ folder.
+To compile Hemu, you'll need the lastest 2.x [Haxe](http://haxe.org/) version and the 1.8.2 [Neko](http://nekovm.org/) version.<br />
+Create the folder bin with `mkdir bin`<br />
+Then, just run `haxe make.hxml` will produce the out.n file in the bin/ folder.<br />
 You can run test with `nes_test_diff.sh`, or run a random rom with `neko out.n random.rom`
 
 Sample output
@@ -51,13 +52,13 @@ From left to right :
 * Y Register Value (RY)
 * Stack Pointer (SP)
 * CPU Flags
-* * Carry Flag
-* * Zero Flag
-* * Interrupt Disable
-* * Decimal Mode
-* * Break Command
-* * Overflow Flag
-* * Negative Flag
+** Carry Flag
+** Zero Flag
+** Interrupt Disable
+** Decimal Mode
+** Break Command
+** Overflow Flag
+** Negative Flag
 
 Resources
 =========
