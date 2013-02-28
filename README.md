@@ -5,23 +5,10 @@ Haxe NES Emulator
 
 **This emulator cannot run any game currently**
 
-Currently mostly an incomplete 6502 CPU VM
+Currently mostly an complete 6502 CPU VM, with unofficial NES instruction added
 
 TODO
 ====
-
-Not supported special instructions
---------------------------
-
-* SLO (03, 07, 0F, 13, 17, 1B, 1F)
-* RLA (23, 27, 2F, 33, 37, 3B, 3F)
-* SRE (43, 47, 4F, 53, 57, 5B, 5F)
-* RRA (63, 67, 6F, 73, 77, 7B, 7F)
-* SAX (83, 87, 8F, 97)
-* LAX (A3, A7, AF, B3, B7, BF)
-* DCP (C3, C7, CF, D3, D7, DB, DF)
-* ISB (E3, E7, EF, F3, F7, FB, FF)
-* SBC (EB)
 
 PPU Support
 -----------
