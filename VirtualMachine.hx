@@ -23,7 +23,7 @@ class VirtualMachine
 	var of:Bool; //Overflow Flag
 	var nf:Bool; //Negative Flag
 
-	var memory:IntHash<Int>;
+	var memory:Map<Int, Int>;
 
 	var decoder:Decode6502;
 
@@ -48,7 +48,7 @@ class VirtualMachine
 		of = false;
 		nf = false;
 
-		memory = new IntHash();
+		memory = new Map();
 		for (i in 0...0xFFFF)
 			memory.set(i, 0);
 
@@ -596,9 +596,6 @@ class VirtualMachine
 					address += y;
 
 				address &= 0xFFFF;
-
-			default:
-				trace("ADDRESSING MODE NOT IMPLEMENTED "+add);
 		}
 
 		return address;
