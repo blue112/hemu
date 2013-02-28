@@ -71,6 +71,12 @@ enum OPCode //http://www.obelisk.demon.co.uk/6502/reference.html
 
     LAX; //Load both accumulator and X
     SAX; //AND, CMP and Store
+    RLA;
+    SLO;
+    SRE;
+    RRA;
+    DCP;
+    ISB;
 }
 
 enum AddressingMode //http://www.obelisk.demon.co.uk/6502/addressing.html
@@ -89,8 +95,6 @@ enum AddressingMode //http://www.obelisk.demon.co.uk/6502/addressing.html
 
     RELATIVE; //Move pointer (8b signed)
     INDIRECT; //Only for jmp => Read 16b from address (16b) and jump thered
-    INDIRECT_INDEXED; //Wat
-    INDEXED_INDIRECT; //Wat
 }
 
 typedef Command =
@@ -154,6 +158,11 @@ class Decode6502
         else if (byte == 0xAA) opCode = TAX;
         else if (byte == 0xBA) opCode = TSX;
         else if (byte == 0xCA) opCode = DEX;
+        else if (byte == 0xEB)
+        {
+            opCode = SBC;
+            addressing = IMMEDIATE;
+        }
         else if (byte == 0xEA) opCode = NOP(0);
         else if (
             byte == 0x1A ||
@@ -184,7 +193,6 @@ class Decode6502
             byte == 0xDC ||
             byte == 0xFC)
                 opCode = NOP(2);
-
         else if (byte & 0xF == 0x8)
         {
             var opcodeTable = [PHP, CLC, PLP, SEC, PHA, CLI, PLA, SEI, DEY, TYA, TAY, CLV, INY, CLD, INX, SED];
@@ -232,12 +240,30 @@ class Decode6502
                 addressing = ABSOLUTE_Y;
             }
         }
-        else if (cc == 3) //Special instructions
+        else if (cc == 3) //Special instructions (11)
         {
-            if (aaa == 5)
+            var opcodeTable = [SLO, RLA, SRE, RRA, SAX, LAX, DCP, ISB];
+            opCode = opcodeTable[aaa];
+
+            var addressingTable = [ZERO_PAGE_X_2, ZERO_PAGE, null, ABSOLUTE, ZERO_PAGE_Y_2, ZERO_PAGE_X, ABSOLUTE_Y, ABSOLUTE_X];
+            addressing = addressingTable[bbb];
+
+            if (addressing == ZERO_PAGE_X && (opCode == LAX || opCode == SAX))
             {
-                opCode = LAX;
+                addressing = ZERO_PAGE_Y;
             }
+            else if (addressing == ABSOLUTE_X && (opCode == LAX))
+            {
+                addressing = ABSOLUTE_Y;
+            }
+            /*else if (addressing == ZERO_PAGE_X_2 && (opCode == DCP || opCode == ISB))
+            {
+                addressing = ZERO_PAGE_Y_2;
+            }
+            else if (addressing == ZERO_PAGE_Y_2 && (opCode == DCP || opCode == ISB))
+            {
+                addressing = ZERO_PAGE_X_2;
+            }*/
         }
 
         return {code:opCode, addressing:addressing};

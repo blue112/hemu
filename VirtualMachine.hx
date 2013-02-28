@@ -103,6 +103,63 @@ class VirtualMachine
 		nf = value & 0x80 != 0;
 	}
 
+	private inline function sbc(v:Int)
+	{
+		var acc_anc_value = accumulator;
+
+		accumulator = accumulator - v - (cf ? 0 : 1);
+		//trace(acc_anc_value.format()+" - "+v.format()+" "+cf+" = "+accumulator);
+		if (accumulator > 0xFF || accumulator < 0) //Overflow
+		{
+			cf = false;
+		}
+		else
+		{
+			cf = true;
+		}
+
+		if (accumulator < 0)
+			accumulator += 0xFF + 1;
+
+		if (acc_anc_value > 0x7F && accumulator < 0x7F)
+		{
+			of = true;
+		}
+		else
+		{
+			of = false;
+		}
+
+		return accumulator;
+	}
+
+	private inline function adc(v:Int)
+	{
+		var acc_anc_value = accumulator;
+
+		accumulator = accumulator + v + (cf ? 1 : 0);
+		if (accumulator > 0xFF)
+		{
+			cf = true;
+			accumulator &= 0xFF;
+		}
+		else
+		{
+			cf = false;
+		}
+
+		if (acc_anc_value <= 0x7F && accumulator > 0x7F && v & 0x80 != 0x80)
+		{
+			of = true;
+		}
+		else
+		{
+			of = false;
+		}
+
+		return accumulator;
+	}
+
 	private function run()
 	{
 		var op;
@@ -129,6 +186,10 @@ class VirtualMachine
 				case STY:
 					var ad = getAddress(op.addressing);
 					memory.set(ad, y);
+
+				case SAX:
+					var ad = getAddress(op.addressing);
+					memory.set(ad, x & accumulator);
 
 				case SEI, CLI:
 					id = op.code == SEI;
@@ -160,65 +221,59 @@ class VirtualMachine
 						default: y;
 					}
 
+					var tmp = compare_to - v;
+					if (tmp < 0)
+						tmp += 0xFF + 1;
+
 					cf = compare_to >= v;
 					zf = compare_to == v;
-					nf = (compare_to - v) < 0 || (compare_to - v) & 0x80 == 0x80;
+					nf = tmp & 0x80 == 0x80;
+
+				case DCP: //DEC + CMP
+					var ad = getAddress(op.addressing);
+					var v = getValue(op.addressing, ad) - 1;
+					v &= 0xFF;
+					memory.set(ad, v);
+
+					var tmp = accumulator - v;
+					if (tmp < 0)
+						tmp += 0xFF + 1;
+
+					cf = accumulator >= v;
+					zf = accumulator == v;
+					nf = tmp & 0x80 == 0x80;
 
 				case ADC:
 					var ad = getAddress(op.addressing);
 					var v = getValue(op.addressing, ad);
-					var acc_anc_value = accumulator;
 
-					accumulator = accumulator + v + (cf ? 1 : 0);
-					if (accumulator > 0xFF)
-					{
-						cf = true;
-						accumulator &= 0xFF;
-					}
-					else
-					{
-						cf = false;
-					}
+					value = adc(v);
 
-					if (acc_anc_value <= 0x7F && accumulator > 0x7F && v & 0x80 != 0x80)
-					{
-						of = true;
-					}
-					else
-					{
-						of = false;
-					}
+				case RRA:
+					var ad = getAddress(op.addressing);
+					var v = getValue(op.addressing, ad);
+					var new_cf = v & 1 != 0;
+					value = (v >> 1) & 0xFF;
+					value += cf ? 0x80 : 0;
 
-					value = accumulator;
+					cf = new_cf;
+					memory.set(ad, value);
+
+					value = accumulator = adc(value);
 
 				case SBC:
 					var ad = getAddress(op.addressing);
 					var v = getValue(op.addressing, ad);
-					var acc_anc_value = accumulator;
+					value = sbc(v);
 
-					accumulator = accumulator - v - (cf ? 0 : 1);
-					if (accumulator > 0xFF || accumulator < 0) //Overflow
-					{
-						cf = false;
-					}
-					else
-					{
-						cf = true;
-					}
+				case ISB:
+					var ad = getAddress(op.addressing);
+					var v = getValue(op.addressing, ad);
+					v++;
+					v &= 0xFF;
+					memory.set(ad, v);
 
-					if (accumulator > 127 || accumulator < -128 || acc_anc_value > 0x7F && accumulator < 0x7F)
-					{
-						of = true;
-					}
-					else
-					{
-						of = false;
-					}
-
-					if (accumulator < 0)
-						accumulator += 0xFF + 1;
-
-					value = accumulator;
+					value = sbc(v);
 
 				case JSR:
 					var ad = getAddress(op.addressing);
@@ -277,6 +332,17 @@ class VirtualMachine
 						memory.set(ad, value);
 					}
 
+				case SRE:
+					var ad = getAddress(op.addressing);
+					var v = getValue(op.addressing, ad);
+					cf = v & 1 != 0;
+					value = v >> 1;
+
+					memory.set(ad, value);
+
+					accumulator = value ^ accumulator;
+					value = accumulator;
+
 				case ROL:
 					var ad = getAddress(op.addressing);
 					var v = getValue(op.addressing, ad);
@@ -293,6 +359,32 @@ class VirtualMachine
 					{
 						memory.set(ad, value);
 					}
+
+				case RLA:
+					var ad = getAddress(op.addressing);
+					var v = getValue(op.addressing, ad);
+					var new_cf = v & 0x80 != 0;
+					value = (v << 1) & 0xFF;
+					value += cf ? 1 : 0;
+
+					memory.set(ad, value);
+					cf = new_cf;
+
+					//AND
+					accumulator &= value;
+					value = accumulator;
+
+				case SLO:
+					var ad = getAddress(op.addressing);
+					var v = getValue(op.addressing, ad);
+
+					cf = v & 0x80 != 0;
+					v = (v << 1) & 0xFF;
+					memory.set(ad, v);
+
+					//OR
+					accumulator |= v;
+					value = accumulator;
 
 				case ROR:
 					var ad = getAddress(op.addressing);
@@ -347,6 +439,14 @@ class VirtualMachine
 				case JMA:
 					var ad = getAddress(INDIRECT);
 					pc = ad;
+
+				case LAX: //LDX + TXA
+					//LDX
+					var ad = getAddress(op.addressing);
+					x = getValue(op.addressing, ad);
+
+					//TXA
+					accumulator = value = x;
 
 				case LDA:
 					var ad = getAddress(op.addressing);
