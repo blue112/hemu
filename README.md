@@ -32,7 +32,7 @@ It will be handled in a future version.
 How to compile
 ==============
 
-To compile Hemu, you'll need the lastest 2.x [Haxe](http://haxe.org/) version and the 1.8.2 [Neko](http://nekovm.org/) version.<br />
+To compile Hemu, you'll need the lastest 3.0 [Haxe](http://haxe.org/manual/haxe3) version and the 1.8.2 [Neko](http://nekovm.org/) version.<br />
 Create the folder bin with `mkdir bin`<br />
 Then, just run `haxe make.hxml` will produce the out.n file in the bin/ folder.<br />
 You can run test with `nes_test_diff.sh`, or run a random rom with `neko out.n random.rom`
